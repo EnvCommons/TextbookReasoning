@@ -100,7 +100,6 @@ def get_data_path() -> Path:
 class TaskSpec(BaseModel):
     """Task specification schema."""
     id: str
-    subject: str
 
 
 class SubmitAnswerInput(BaseModel):
@@ -125,15 +124,17 @@ class TextbookReasoning(Environment):
         super().__init__(task_spec)
         self.validated = TaskSpec.model_validate(task_spec)
 
-        # Extract task index from ID (format: textbook_{subject}_{idx})
-        task_idx = int(self.validated.id.split('_')[-1])
+        # Extract task index from ID (format: textbook_{idx})
+        task_idx = int(self.validated.id.split('_')[1])
 
+        # Load only this specific row using efficient row-group reading
         cols = ["question", "reference_answer", "answer", "subject"]
         task_row = read_one_row(get_data_path(), task_idx, cols)
 
         self.question = str(task_row["question"])
         self.reference_answer = str(task_row.get("reference_answer", ""))
         self.detailed_answer = str(task_row.get("answer", ""))
+        self.subject = str(task_row["subject"])
 
         # Validate OpenAI API key
         api_key = secrets.get("openai_api_key")
@@ -215,7 +216,7 @@ class TextbookReasoning(Environment):
             ],
             metadata={
                 "task_id": self.validated.id,
-                "subject": self.validated.subject,
+                "subject": self.subject,
                 "student_answer": params.answer,
                 "reference_answer": grader_output["reference_answer"],
                 "is_correct": grader_output["is_correct"],
@@ -234,21 +235,20 @@ class TextbookReasoning(Environment):
         """
         List all tasks for the given split.
 
-        Loads only the subject column for memory efficiency.
+        Uses only parquet metadata (row count) - no data loaded.
         """
         if split != "train":
             return []
 
-        # Load only subject column (fast, ~10-20 MB in memory)
-        df = pd.read_parquet(get_data_path(), columns=["subject"])
+        # Get row count from parquet metadata (fast, no data read)
+        pf = pq.ParquetFile(get_data_path())
+        total_rows = pf.metadata.num_rows
 
-        # Generate task specs with minimal data
+        # Generate task specs based on row indices only
         tasks = []
-        for idx, row in df.iterrows():
-            subject = str(row["subject"]).lower().replace(" ", "_")
+        for idx in range(total_rows):
             tasks.append({
-                "id": f"textbook_{subject}_{idx}",
-                "subject": str(row["subject"])
+                "id": f"textbook_{idx}"
             })
 
         return tasks
