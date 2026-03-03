@@ -62,10 +62,10 @@ Agents in TextbookReasoning answer academic questions in a standard environment.
 ## Citation
 
 ```bibtex
-@misc{textbookreasoning2024,
-  title={TextbookReasoning: A Large-Scale Academic Reasoning Dataset},
-  author={MegaScience},
-  year={2024},
-  howpublished={https://huggingface.co/datasets/MegaScience/TextbookReasoning}
+@article{fan2025megascience,
+  title={MegaScience: Pushing the Frontiers of Post-Training Datasets for Science Reasoning},
+  author={Fan, Run-Ze and Wang, Zengzhi and Liu, Pengfei},
+  journal={arXiv preprint arXiv:2507.16812},
+  year={2025}
 }
 ```
