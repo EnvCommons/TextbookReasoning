@@ -10,6 +10,7 @@ Dataset: HuggingFace TextbookReasoning (train split, 651k examples)
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -67,12 +68,59 @@ Your task: Determine if the student's answer is semantically equivalent to the r
 
 **Output Format:**
 First, provide a brief analysis (2-3 sentences) of your reasoning.
-Then, on a new line, write EXACTLY one of:
-- "CORRECT" if the student answer is semantically correct
-- "INCORRECT" if the student answer is wrong or incomplete
+Then give your verdict inside <answer></answer> tags, containing EXACTLY one of:
+- <answer>CORRECT</answer> if the student answer is semantically correct
+- <answer>INCORRECT</answer> if the student answer is wrong or incomplete
+
+The <answer></answer> tags must contain only the single word CORRECT or
+INCORRECT, with no other text, and must be the last thing you write.
 
 Analysis:
 """
+
+
+# The verdict GRADER_TEMPLATE asks for, e.g. "<answer>CORRECT</answer>".
+_VERDICT_TAG_RE = re.compile(r"<answer>(.*?)</answer>", re.IGNORECASE | re.DOTALL)
+
+
+def _parse_grader_verdict(grading_response: str) -> bool:
+    """
+    Extract the grader's verdict from its <answer></answer> tags.
+
+    GRADER_TEMPLATE asks for a brief analysis followed by the verdict inside
+    <answer></answer>, so the verdict is read from the last such tag pair.
+
+    The verdict cannot be recovered by searching the response for "CORRECT":
+    "INCORRECT" is a substring of that, and both appear inside ordinary words
+    like "incorrectly", which the analysis prose regularly uses when describing
+    an error in the question or the reference answer. Delimiting the verdict
+    removes the ambiguity entirely rather than trying to out-guess the prose.
+
+    Raises:
+        RuntimeError: If the response has no <answer></answer> tags, or the last
+            pair does not contain exactly CORRECT or INCORRECT. A grader reply we
+            cannot parse is not evidence that the student was wrong, so we
+            surface it and let the platform retry rather than scoring it 0.0.
+    """
+    matches = _VERDICT_TAG_RE.findall(grading_response)
+    if not matches:
+        raise RuntimeError(
+            "Grader response contained no <answer></answer> verdict tags; "
+            f"cannot determine correctness. Response was: {grading_response!r}"
+        )
+
+    # Tolerate whitespace and light markdown/punctuation inside the tags.
+    verdict = matches[-1].strip().strip("*_`\"'.:;-— \t\r\n").upper()
+    if verdict == "CORRECT":
+        return True
+    if verdict == "INCORRECT":
+        return False
+
+    raise RuntimeError(
+        f"Grader verdict tag contained {matches[-1]!r}, which is neither CORRECT "
+        f"nor INCORRECT; cannot determine correctness. Response was: "
+        f"{grading_response!r}"
+    )
 
 
 def get_data_path() -> Path:
@@ -182,9 +230,7 @@ class TextbookReasoning(Environment):
 
         grading_response = res.choices[0].message.content or ""
 
-        # Parse response: look for "CORRECT" without "INCORRECT"
-        upper_response = grading_response.upper()
-        is_correct = "CORRECT" in upper_response and "INCORRECT" not in upper_response
+        is_correct = _parse_grader_verdict(grading_response)
 
         return {
             "is_correct": is_correct,
