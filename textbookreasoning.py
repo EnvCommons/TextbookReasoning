@@ -145,6 +145,11 @@ def get_data_path() -> Path:
     return data_path
 
 
+# Reward for a submission made after the task has already been graded. Negative
+# so repeat submissions are actively discouraged, not merely left unscored.
+REPEAT_SUBMISSION_PENALTY = -0.1
+
+
 class TaskSpec(BaseModel):
     """Task specification schema."""
     id: str
@@ -193,6 +198,10 @@ class TextbookReasoning(Environment):
             )
 
         self.client = openai.AsyncClient(api_key=api_key)
+
+        # Graded submissions this session. Only the first is rewarded, so the
+        # grader cannot be re-run for a second payout on the same task.
+        self.submitted = 0
 
     async def _grade_sample(self, student_answer: str) -> dict:
         """
@@ -246,6 +255,17 @@ class TextbookReasoning(Environment):
         The answer will be evaluated by an LLM grader that checks for semantic
         correctness. You can use LaTeX notation (e.g., \\boxed{}) for math answers.
         """
+        if self.submitted > 0:
+            return ToolOutput(
+                blocks=[TextBlock(text="An answer has already been submitted for this task. "
+                                       "This episode is over: it is not re-graded, and repeat "
+                                       "submissions are penalised (reward -0.1).")],
+                metadata={"task_id": self.validated.id, "already_submitted": True,
+                          "submission_count": self.submitted},
+                reward=REPEAT_SUBMISSION_PENALTY,
+                finished=True,
+            )
+
         grader_output = await self._grade_sample(params.answer)
 
         # Binary reward
@@ -253,6 +273,10 @@ class TextbookReasoning(Environment):
 
         # Display grader reasoning + result
         result_text = "✅ Correct" if grader_output["is_correct"] else "❌ Incorrect"
+
+        # Incremented only after grading succeeds, so a grader failure (which
+        # raises) leaves the attempt retryable.
+        self.submitted += 1
 
         return ToolOutput(
             blocks=[
