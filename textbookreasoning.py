@@ -214,7 +214,7 @@ class TextbookReasoning(Environment):
             dict with keys:
                 - is_correct: bool
                 - grading_response: str (full LLM reasoning)
-                - reference_answer: str (for metadata)
+                - reference_answer: str (the reference the grader was given)
         """
         # Get reference answer for this task
         reference = self.reference_answer
@@ -271,7 +271,8 @@ class TextbookReasoning(Environment):
         # Binary reward
         reward = 1.0 if grader_output["is_correct"] else 0.0
 
-        # Display grader reasoning + result
+        # Display the result only: the grader's reasoning is written with the
+        # reference answer in view and routinely restates it.
         result_text = "✅ Correct" if grader_output["is_correct"] else "❌ Incorrect"
 
         # Incremented only after grading succeeds, so a grader failure (which
@@ -279,18 +280,12 @@ class TextbookReasoning(Environment):
         self.submitted += 1
 
         return ToolOutput(
-            blocks=[
-                TextBlock(
-                    text=f"{grader_output['grading_response']}\n\n{result_text}"
-                )
-            ],
+            blocks=[TextBlock(text=result_text)],
             metadata={
                 "task_id": self.validated.id,
                 "subject": self.subject,
                 "student_answer": params.answer,
-                "reference_answer": grader_output["reference_answer"],
                 "is_correct": grader_output["is_correct"],
-                "grader_reasoning": grader_output["grading_response"]
             },
             reward=reward,
             finished=True

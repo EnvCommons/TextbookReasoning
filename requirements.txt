@@ -1,6 +1,6 @@
 fastapi>=0.115.12
 openai>=1.0.0
-openreward
+openreward>=0.1.160
 pandas
 pyarrow
 pydantic>=2.0.0
