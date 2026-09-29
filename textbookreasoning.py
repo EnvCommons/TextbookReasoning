@@ -102,11 +102,14 @@ def _parse_grader_verdict(grading_response: str) -> bool:
             cannot parse is not evidence that the student was wrong, so we
             surface it and let the platform retry rather than scoring it 0.0.
     """
+    # The raw response is logged, not put in the exception message: the message
+    # reaches the agent, and the response can restate the reference answer.
     matches = _VERDICT_TAG_RE.findall(grading_response)
     if not matches:
+        print(f"Grader response had no verdict tags: {grading_response!r}")
         raise RuntimeError(
-            "Grader response contained no <answer></answer> verdict tags; "
-            f"cannot determine correctness. Response was: {grading_response!r}"
+            "Grader returned an unparseable response (no <answer></answer> "
+            "verdict tags); cannot determine correctness."
         )
 
     # Tolerate whitespace and light markdown/punctuation inside the tags.
@@ -116,10 +119,10 @@ def _parse_grader_verdict(grading_response: str) -> bool:
     if verdict == "INCORRECT":
         return False
 
+    print(f"Grader verdict tag was neither CORRECT nor INCORRECT: {grading_response!r}")
     raise RuntimeError(
-        f"Grader verdict tag contained {matches[-1]!r}, which is neither CORRECT "
-        f"nor INCORRECT; cannot determine correctness. Response was: "
-        f"{grading_response!r}"
+        "Grader returned an unparseable response (verdict tag is neither "
+        "CORRECT nor INCORRECT); cannot determine correctness."
     )
 
 
