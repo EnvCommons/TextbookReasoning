@@ -99,8 +99,8 @@ def _parse_grader_verdict(grading_response: str) -> bool:
     Raises:
         RuntimeError: If the response has no <answer></answer> tags, or the last
             pair does not contain exactly CORRECT or INCORRECT. A grader reply we
-            cannot parse is not evidence that the student was wrong, so we
-            surface it and let the platform retry rather than scoring it 0.0.
+            cannot parse is not evidence that the student was wrong, so the
+            caller re-samples the grader rather than scoring it 0.0.
     """
     # The raw response is logged, not put in the exception message: the message
     # reaches the agent, and the response can restate the reference answer.
@@ -151,6 +151,11 @@ def get_data_path() -> Path:
 # Reward for a submission made after the task has already been graded. Negative
 # so repeat submissions are actively discouraged, not merely left unscored.
 REPEAT_SUBMISSION_PENALTY = -0.1
+
+# The grader occasionally replies without a verdict; such a reply is re-sampled,
+# up to this many grader calls in total. An answer still without a verdict is
+# returned ungraded (finished=False) so the agent can resubmit.
+GRADER_ATTEMPTS = 3
 
 
 class TaskSpec(BaseModel):
@@ -215,7 +220,8 @@ class TextbookReasoning(Environment):
 
         Returns:
             dict with keys:
-                - is_correct: bool
+                - is_correct: bool, or None if no attempt in GRADER_ATTEMPTS
+                  returned a verdict
                 - grading_response: str (full LLM reasoning)
                 - reference_answer: str (the reference the grader was given)
         """
@@ -232,17 +238,23 @@ class TextbookReasoning(Environment):
             student_answer=student_answer,
         )
 
-        # Use gpt-5-mini for grading (fast and cost-effective)
-        res = await self.client.chat.completions.create(
-            model="gpt-5-mini",
-            messages=[
-                {"role": "user", "content": grader_prompt}
-            ],
-        )
+        is_correct = None
+        for attempt in range(1, GRADER_ATTEMPTS + 1):
+            # Use gpt-5-mini for grading (fast and cost-effective)
+            res = await self.client.chat.completions.create(
+                model="gpt-5-mini",
+                messages=[
+                    {"role": "user", "content": grader_prompt}
+                ],
+            )
 
-        grading_response = res.choices[0].message.content or ""
+            grading_response = res.choices[0].message.content or ""
 
-        is_correct = _parse_grader_verdict(grading_response)
+            try:
+                is_correct = _parse_grader_verdict(grading_response)
+                break
+            except RuntimeError:
+                print(f"No grader verdict (attempt {attempt}/{GRADER_ATTEMPTS})")
 
         return {
             "is_correct": is_correct,
@@ -270,6 +282,17 @@ class TextbookReasoning(Environment):
             )
 
         grader_output = await self._grade_sample(params.answer)
+
+        if grader_output["is_correct"] is None:
+            # Not counted as a submission, so the answer can be resubmitted.
+            return ToolOutput(
+                blocks=[TextBlock(text="⚠️ Not graded. The grader could not reach a verdict on "
+                                       "this answer. Nothing was graded and your attempt was not "
+                                       "used; submit your answer again.")],
+                metadata={"task_id": self.validated.id, "error": "No grader verdict"},
+                reward=0.0,
+                finished=False,
+            )
 
         # Binary reward
         reward = 1.0 if grader_output["is_correct"] else 0.0
