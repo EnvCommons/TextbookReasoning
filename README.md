@@ -1,6 +1,6 @@
 # TextbookReasoning
 
-[![OpenReward Environment](https://img.shields.io/badge/%E2%AD%90%20OpenReward-Environment-f7e6cc)](https://openreward.ai/EnvCommons/textbookreasoning) [![Hugging Face Dataset](https://img.shields.io/badge/Hugging%20Face-Dataset-orange)](https://huggingface.co/datasets/MegaScience/TextbookReasoning)
+[![OpenReward Environment](https://img.shields.io/badge/%E2%AD%90%20OpenReward-Environment-f7e6cc)](https://openreward.ai/GeneralReasoning/TextbookReasoning) [![Hugging Face Dataset](https://img.shields.io/badge/Hugging%20Face-Dataset-orange)](https://huggingface.co/datasets/MegaScience/TextbookReasoning)
 
 ## Description
 
@@ -19,19 +19,15 @@ Agents are given a standard environment with no sandbox or file system access.
 
 ## License
 
-[CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/).
+[MIT](https://opensource.org/licenses/MIT). The underlying MegaScience/TextbookReasoning dataset is released under CC BY-NC-SA 4.0.
 
 ## Tasks
 
-There is one split in this environment:
-
-- **train**: 651,840 tasks
-
-Questions span 7 STEM subjects with varying difficulty levels.
+There are 651,840 tasks in a single `train` split. Questions span 7 STEM subjects.
 
 ## Reward Structure
 
-This is a single-turn environment. The agent submits an answer via the `submit_answer` tool. An LLM grader (gpt-5-mini) evaluates semantic correctness, handling equivalent formulations and LaTeX notation. Reward is binary: 1.0 if correct, 0.0 if incorrect.
+This is a single-turn environment. The agent submits an answer via the `submit_answer` tool. An LLM grader (gpt-5-mini) evaluates semantic correctness, handling equivalent formulations and LaTeX notation. Reward is binary: 1.0 if correct, 0.0 if incorrect. Only the first graded answer is rewarded; a repeat submission gets a reward of -0.1. If the grader returns no verdict after 3 attempts, the answer is returned ungraded and the episode stays open so the agent can resubmit.
 
 ## Data
 
@@ -41,25 +37,21 @@ Data consists of a Parquet file (~532 MB) sourced from [HuggingFace MegaScience/
 
 | Tool | Description |
 |------|-------------|
-| `submit_answer` | Submit your answer (may include LaTeX notation). Ends the episode. |
+| `submit_answer` | Submit your answer (may include LaTeX notation). Ends the episode once the answer is graded. |
 
 ## Time Horizon
 
 Single-turn. The agent reads the academic question and submits one answer.
 
-## Environment Difficulty
-
-TextbookReasoning evaluates graduate-level STEM reasoning across 7 academic subjects with semantic grading.
-
 ## Other Environment Requirements
 
-OpenAI API key required for LLM-based grading. Pass via `secrets={"openai_api_key": "..."}`.
+An OpenAI API key is required for LLM-based grading, passed as the `openai_api_key` secret.
 
 ## Safety
 
 Agents in TextbookReasoning answer academic questions in a standard environment. The environment does not present direct safety risks.
 
-## Citation
+## Citations
 
 ```bibtex
 @article{fan2025megascience,
